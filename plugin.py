@@ -1,9 +1,11 @@
 """
-<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.0.7">
+<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.0.8">
     <params>
         <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.20"/>
         <param field="Port" label="Port" width="50px" required="true" default="5002"/>
         <param field="Mode2" label="STATUS Poll Period" width="40px" required="true" default="60"/>
+		<param field="Mode3" label="PIR Sensors seperated by (,)" width="240px" required="true" default="1,5,6,9,10,11,12,13"/>
+        <param field="Mode4" label="Disarm Code" width="50px" required="true" default="0000"/>		
         <param field="Mode6" label="Debug" width="75px">
             <options>
                 <option label="True" value="Debug"/>
@@ -13,19 +15,20 @@
     </params>
 </plugin>
 """
-# Added ZR to update device 17 to "0"
-# Added MF,MR,BF,BR,LF,LR,RO,NR
+# Update Unit 99 without waiting for heartbeat
+# Convert most of the Log requests to Debug requests
+# Tie pirensors variable to Mode3 Parameter
+# Tie Disarm Code to Mode4 Parameter
 
 import Domoticz
 
 class BasePlugin:
     STATUSMESSAGE = b"STATUS \r\n"
-    DISARMMESSAGE = b"KEYS XXXXE\r\n" #Update XXXX with your disarm Code
+    DISARMMESSAGE = None
     ARMMESSAGE = b"ARM \r\n"
     STAYMESSAGE = b"STAY \r\n"
     telnetConn = None
-    pirsensors = [1,5,6,9,10,11,12,13] #State PIR Sensor Zone Numbers here, other zones are Door Contacts
-    alarmOff = 0
+    pirsensors = None
     nextConnect = 3
     oustandingPings = 0
 
@@ -34,13 +37,16 @@ class BasePlugin:
         return
 
     def onStart(self):
-        Domoticz.Log("onStart called")
+        global pirsensors
+        global DISARMMESSAGE
+		
         if (Parameters["Mode6"] == "Debug"):
             Domoticz.Debugging(1)
 
         if (len(Devices) == 0):
+            pirsensors = [int (x) for x in Parameters["Mode3"].split(',')]
             for zone in range(1,17): #For 16 Zones
-                if zone in self.pirsensors: #PIR Sensor
+                if zone in pirsensors: #PIR Sensor
                     Domoticz.Device(Name="Zone "+str(zone), Unit=zone, TypeName="Switch", Switchtype=8).Create()
                 else: #Door Contact
                     Domoticz.Device(Name="Zone "+str(zone), Unit=zone, TypeName="Switch", Switchtype=11).Create()
@@ -48,18 +54,21 @@ class BasePlugin:
             Domoticz.Device(Name="Arm/Disarm", Unit=99, TypeName="Selector Switch", Switchtype=18, Image=13, Options=self.SourceOptions).Create()
             Domoticz.Device(Name="AlarmStatus", Unit=17, TypeName="Text").Create()
 
-        Domoticz.Log("Device created.")
+        Domoticz.Debug("Device created.")
         DumpConfigToLog()
+		
+        Disarmtemp = "KEYS "+Parameters["Mode4"]+"E\r\n"
+        DISARMMESSAGE = Disarmtemp.encode()
 
         self.telnetConn = Domoticz.Connection(Name="Telnet", Transport="TCP/IP", Protocol="Line", Address=Parameters["Address"], Port=Parameters["Port"])
         self.telnetConn.Connect()
         Domoticz.Heartbeat(int(Parameters["Mode2"]))
 
     def onStop(self):
-        Domoticz.Log("onStop called")
+        Domoticz.Debug("onStop called")
 
     def onConnect(self, Connection, Status, Description):
-        Domoticz.Log("onConnect called")
+        Domoticz.Debug("onConnect called")
         for zonereset in range(1,17): #Reset All Switches on Connect
             UpdateDevice(zonereset,0,"False")
         UpdateDevice(17,0,"0")
@@ -90,15 +99,15 @@ class BasePlugin:
         elif (action == "ZC"): #Zone Closed
             UpdateDevice(int(detail),0,"False")
         elif (action == "DA"): #Disarmed Area A
-            self.alarmOff = 0
+            UpdateDevice(99,0,"0")
         elif (action == "SA"): #Stay Area A
-            self.alarmOff = 1
+            UpdateDevice(99,10,"10")
         elif (action == "AA"): #Arm Area A
-            self.alarmOff = 2
+            UpdateDevice(99,20,"20")
         elif (action == "ES"): #Stay Exit Delay
-            self.alarmOff = 1
+            UpdateDevice(99,10,"10")
         elif (action == "EA"): #Arm Exit Delay
-            self.alarmOff = 2
+            UpdateDevice(99,20,"20")
         elif (action == "ZA"): #Zone Alarm
             UpdateDevice(17,0,detail)
         elif (action == "ZR"): #Zone Restore
@@ -116,22 +125,22 @@ class BasePlugin:
         elif (action == "LR"): #Line Restore
             Domoticz.Log("Line Restore")
         elif (action == "RO"): #All Zones Sealed
-            Domoticz.Log("Ready On - All Zones Sealed")
+            Domoticz.Debug("Ready On - All Zones Sealed")
         elif (action == "NR"): #Zones Are Unsealed
-            Domoticz.Log("Not Ready - Zones Are Unsealed")
+            Domoticz.Debug("Not Ready - Zones Are Unsealed")
         else:
             Domoticz.Debug("Unknown: Action "+strData+" ignored.") #Debug
         return
 
     def onCommand(self, Unit, Command, Level, Hue):
-        Domoticz.Log("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
+        Domoticz.Debug("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
         Command = Command.strip()
         action, sep, params = Command.partition(' ')
         action = action.capitalize()
         params = params.capitalize()
         if (Unit == 99): #=Remote Keypad
             if (Command == 'Off'):
-                self.telnetConn.Send(Message=self.DISARMMESSAGE, Delay=0)
+                self.telnetConn.Send(Message=DISARMMESSAGE, Delay=0)
                 UpdateDevice(17,0,"0")
                 Domoticz.Log("Send DISARM")
             elif (Command == 'Set Level'):
@@ -151,14 +160,7 @@ class BasePlugin:
         self.isConnected = False 
 
     def onHeartbeat(self):
-        Domoticz.Log("onHeartbeat called")
-
-        if (self.alarmOff == 0):
-            UpdateDevice(99,0,"0")
-        elif (self.alarmOff == 1):
-            UpdateDevice(99,10,"10")
-        elif (self.alarmOff == 2):
-            UpdateDevice(99,20,"20")
+        Domoticz.Debug("onHeartbeat called")
         
         if (self.telnetConn.Connected() == True):
             if (self.oustandingPings > 3):
