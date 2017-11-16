@@ -1,10 +1,10 @@
 """
-<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.0.8">
+<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.0.9">
     <params>
-        <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.20"/>
+        <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.55"/>
         <param field="Port" label="Port" width="50px" required="true" default="5002"/>
         <param field="Mode2" label="STATUS Poll Period" width="40px" required="true" default="60"/>
-		<param field="Mode3" label="PIR Sensors seperated by (,)" width="240px" required="true" default="1,5,6,9,10,11,12,13"/>
+		<param field="Mode3" label="PIR Sensors seperated by (,)" width="240px" required="true" default="1,5,6"/>
         <param field="Mode4" label="Disarm Code" width="50px" required="true" default="0000"/>		
         <param field="Mode6" label="Debug" width="75px">
             <options>
@@ -15,10 +15,9 @@
     </params>
 </plugin>
 """
-# Update Unit 99 without waiting for heartbeat
-# Convert most of the Log requests to Debug requests
-# Tie pirensors variable to Mode3 Parameter
-# Tie Disarm Code to Mode4 Parameter
+# Add ZO UpdateDevice on ZA
+# Add ZC UpdateDevice on ZR
+# Commented out EAA, since IP Module still sends DA while in EAA
 
 import Domoticz
 
@@ -106,12 +105,14 @@ class BasePlugin:
             UpdateDevice(99,20,"20")
         elif (action == "ES"): #Stay Exit Delay
             UpdateDevice(99,10,"10")
-        elif (action == "EA"): #Arm Exit Delay
-            UpdateDevice(99,20,"20")
+#        elif (action == "EA"): #Arm Exit Delay
+#            UpdateDevice(99,20,"20")
         elif (action == "ZA"): #Zone Alarm
             UpdateDevice(17,0,detail)
+            UpdateDevice(int(detail),1,"True")
         elif (action == "ZR"): #Zone Restore
             UpdateDevice(17,0,"0")
+            UpdateDevice(int(detail),0,"False")
         elif (action == "MF"): #Mains Fail
             Domoticz.Log("Mains Fail")
         elif (action == "MR"): #Mains Restore
