@@ -1,5 +1,5 @@
 """
-<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.0.9">
+<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.1.0">
     <params>
         <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.55"/>
         <param field="Port" label="Port" width="50px" required="true" default="5002"/>
@@ -15,10 +15,7 @@
     </params>
 </plugin>
 """
-# Add ZO UpdateDevice on ZA
-# Add ZC UpdateDevice on ZR
-# Commented out EAA, since IP Module still sends DA while in EAA
-
+# Sometimes Crow sends ZO1ZO1 missing \r\n in between; check if detail is numeric
 import Domoticz
 
 class BasePlugin:
@@ -91,12 +88,12 @@ class BasePlugin:
         action = strData[0:2]
         detail = strData[2:]
 
-        Domoticz.Log("Message:"+strData)
+        Domoticz.Debug("Message:"+strData)
 
         if (action == "ZO"): #Zone Open
-            UpdateDevice(int(detail),1,"True")
+            UpdateDevice(corrected_int(detail),1,"True") 
         elif (action == "ZC"): #Zone Closed
-            UpdateDevice(int(detail),0,"False")
+            UpdateDevice(corrected_int(detail),0,"False")
         elif (action == "DA"): #Disarmed Area A
             UpdateDevice(99,0,"0")
         elif (action == "SA"): #Stay Area A
@@ -109,10 +106,10 @@ class BasePlugin:
 #            UpdateDevice(99,20,"20")
         elif (action == "ZA"): #Zone Alarm
             UpdateDevice(17,0,detail)
-            UpdateDevice(int(detail),1,"True")
+            UpdateDevice(corrected_int(detail),1,"True")
         elif (action == "ZR"): #Zone Restore
             UpdateDevice(17,0,"0")
-            UpdateDevice(int(detail),0,"False")
+            UpdateDevice(corrected_int(detail),0,"False")
         elif (action == "MF"): #Mains Fail
             Domoticz.Log("Mains Fail")
         elif (action == "MR"): #Mains Restore
@@ -154,7 +151,7 @@ class BasePlugin:
 
 
     def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
-        Domoticz.Log("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
+        Domoticz.Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
     def onDisconnect(self, Connection):
         Domoticz.Log("onDisconnect called")
@@ -216,12 +213,18 @@ def onHeartbeat():
     global _plugin
     _plugin.onHeartbeat()
 
+def corrected_int(var):
+    try:
+        return int(var)
+    except:
+        return var.split('Z')[0]
+
 def UpdateDevice(Unit, nValue, sValue):
     # Make sure that the Domoticz device still exists (they can be deleted) before updating it 
     if (Unit in Devices):
         if (Devices[Unit].nValue != nValue) or (Devices[Unit].sValue != sValue):
             Devices[Unit].Update(nValue, str(sValue))
-            Domoticz.Log("Update "+str(nValue)+":'"+str(sValue)+"' ("+Devices[Unit].Name+")")
+            Domoticz.Debug("Update "+str(nValue)+":'"+str(sValue)+"' ("+Devices[Unit].Name+")")
     return
 
     # Generic helper functions
