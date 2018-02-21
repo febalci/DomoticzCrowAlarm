@@ -1,5 +1,5 @@
-# DomoticzAAP
-Domoticz AAP IP Module Plugin for AAP and Crow Security Alarms
+# Domoticz Crow Alarm
+Domoticz Crow Alarm IP Module Plugin for AAP and Crow Security Alarms
 
 Domoticz plugin for use with AAP IP Control Module. Please be aware that this is for the Home Automation version of the IP Module, which requires a different firmware from AAP. 
 
