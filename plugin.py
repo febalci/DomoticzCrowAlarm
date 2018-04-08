@@ -1,5 +1,5 @@
 """
-<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.1.0">
+<plugin key="AAPIPModule" name="Crow Runner Alarm" author="febalci" version="1.1.1">
     <params>
         <param field="Address" label="IP Address" width="200px" required="true" default="192.168.1.55"/>
         <param field="Port" label="Port" width="50px" required="true" default="5002"/>
@@ -15,7 +15,11 @@
     </params>
 </plugin>
 """
+# 1.1.0:
 # Sometimes Crow sends ZO1ZO1 missing \r\n in between; check if detail is numeric
+# 1.1.1:
+# Decrease outstandingPings and nextConnect to 1
+# Add Status Device Unit 98 For Mains,Battery etc.
 import Domoticz
 
 class BasePlugin:
@@ -25,8 +29,8 @@ class BasePlugin:
     STAYMESSAGE = b"STAY \r\n"
     telnetConn = None
     pirsensors = None
-    nextConnect = 3
-    oustandingPings = 0
+    nextConnect = 1
+    outstandingPings = 0
 
     def __init__(self):
         #self.var = 123
@@ -49,6 +53,10 @@ class BasePlugin:
             self.SourceOptions = {"LevelActions": "||","LevelNames": "Disarm|Stay|Arm","LevelOffHidden": "false","SelectorStyle": "1"}
             Domoticz.Device(Name="Arm/Disarm", Unit=99, TypeName="Selector Switch", Switchtype=18, Image=13, Options=self.SourceOptions).Create()
             Domoticz.Device(Name="AlarmStatus", Unit=17, TypeName="Text").Create()
+        
+        if 98 not in Devices:
+            Domoticz.Debug("Create Status Device")
+            Domoticz.Device(Name="CrowStatus", Unit=98, TypeName="Text").Create()
 
         Domoticz.Debug("Device created.")
         DumpConfigToLog()
@@ -80,7 +88,7 @@ class BasePlugin:
         return
 
     def onMessage(self, Connection, Data, Status, Extra):
-        self.oustandingPings = self.oustandingPings - 1
+        self.outstandingPings = self.outstandingPings - 1
         strData = Data.decode("utf-8", "ignore")
         Domoticz.Debug("onMessage called with Data: '"+str(strData)+"'")
 
@@ -112,16 +120,22 @@ class BasePlugin:
             UpdateDevice(corrected_int(detail),0,"False")
         elif (action == "MF"): #Mains Fail
             Domoticz.Log("Mains Fail")
+            UpdateDevice(98,1,"Mains Fail")
         elif (action == "MR"): #Mains Restore
             Domoticz.Log("Mains Restore")
+            UpdateDevice(98,0,"Mains Restore")
         elif (action == "BF"): #Battery Fail
             Domoticz.Log("Battery Fail")
+            UpdateDevice(98,1,"Battery Fail")
         elif (action == "BR"): #Battery Restore
             Domoticz.Log("Battery Restore")
+            UpdateDevice(98,0,"Battery Restore")
         elif (action == "LF"): #Line Fail
             Domoticz.Log("Line Fail")
+            UpdateDevice(98,1,"Line Fail")
         elif (action == "LR"): #Line Restore
             Domoticz.Log("Line Restore")
+            UpdateDevice(98,0,"Line Restore")
         elif (action == "RO"): #All Zones Sealed
             Domoticz.Debug("Ready On - All Zones Sealed")
         elif (action == "NR"): #Zones Are Unsealed
@@ -161,20 +175,20 @@ class BasePlugin:
         Domoticz.Debug("onHeartbeat called")
         
         if (self.telnetConn.Connected() == True):
-            if (self.oustandingPings > 3):
+            if (self.outstandingPings > 1):
                 Domoticz.Debug("Ping Timeout, Disconnect")
                 self.telnetConn.Disconnect()
                 self.nextConnect = 0
             else:
                 self.telnetConn.Send(Message=self.STATUSMESSAGE, Delay=0)
                 Domoticz.Debug("STATUS Message Sent")
-                self.oustandingPings = self.oustandingPings + 1
+                self.outstandingPings = self.outstandingPings + 1
         else:
             # if not connected try and reconnected every 2 heartbeats
-            self.oustandingPings = 0
+            self.outstandingPings = 0
             self.nextConnect = self.nextConnect - 1
             if (self.nextConnect <= 0):
-                self.nextConnect = 3
+                self.nextConnect = 1
                 self.telnetConn.Connect()
         return
 
